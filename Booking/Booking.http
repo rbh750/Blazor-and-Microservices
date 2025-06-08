@@ -1,0 +1,11 @@
+@MicroServices_HostAddress = http://localhost:5147
+
+GET {{MicroServices_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
+
+GET {{MicroServices_HostAddress}}/SimulateBookings/
+Accept: application/json
+
+###
