@@ -1,4 +1,6 @@
-﻿namespace Booking.Utilities;
+﻿using AzServices;
+
+namespace Booking.Utilities;
 
 public enum SeatStatus
 {
@@ -7,9 +9,18 @@ public enum SeatStatus
     Reserved     // The seat is paid and fully reserved
 }
 
-public class BookingSimulator
+public interface IBookingSimulator
 {
-    record Seat(int Row, int Number, SeatStatus Status = SeatStatus.Available);
+    void BookSeats(int rows, int seatsPerRow);
+}
+
+public class BookingSimulator(IServiceBusService serviceBusService) : IBookingSimulator
+{
+    record Seat(int Row, int Number, SeatStatus Status)
+    {
+        public Seat WithStatus(SeatStatus newStatus) => this with { Status = newStatus };
+    }
+
     List<Seat> seats = [];
     private volatile bool circuitBroken = false;
 
@@ -34,25 +45,33 @@ public class BookingSimulator
         seats = [.. Enumerable.Range(1, rows)
             .SelectMany(row =>
                 Enumerable.Range(1, seatsPerRow)
-                .Select(seatNumber => new Seat(row, seatNumber)))];
+                .Select(seatNumber => new Seat(row, seatNumber, SeatStatus.Available)))];
 
         // Create a list of booking tasks with a length twice the theater's capacity to simulate high concurrency.
-        List<Task> tasks = [.. Enumerable.Range(0, seats.Count * 2)
-            .Select(i =>
-            {
-                return Task.Run(() => BookSeat());
-            })];
+        // and then process them in batches to simulate different booking times.
+        int totalTasks = seats.Count;
+        int batchSize = 10;
 
-        Task.WaitAll([.. tasks]);
+        for (int i = 0; i < totalTasks; i += batchSize)
+        {
+            var batchTasks = Enumerable.Range(i, Math.Min(batchSize, totalTasks - i))
+                .Select(_ => Task.Run(() => BookSeat()))
+                .ToArray();
+
+            Task.WaitAll(batchTasks);
+        }
     }
 
     private async Task BookSeat()
     {
-        // Check if the circuit breaker is active.
-        circuitBreakerEvent.Wait();
-
+        // Simulates different booking times by introducing a random delay
         int delay = Random.Shared.Next(1000, 5000);
         await Task.Delay(delay);
+
+        // "Enter the ManualResetEvent area"
+        // Blocks the current thread if the circuit breaker is closed (i.e., after ManualResetEventSlim.Reset() is called),
+        // and resumes only when the circuit breaker is opened again (ManualResetEventSlim.Set() is called).
+        circuitBreakerEvent.Wait();
 
         // Pick any available seat randomly (thread-safe)
         Seat? seatToBook = null;
@@ -71,7 +90,8 @@ public class BookingSimulator
                 seatToBook = randomSeat;
 
                 // Mark as held (simulate booking in process)
-                seats[seatListIndex] = randomSeat with { Status = SeatStatus.Held };
+                seatToBook = randomSeat with { Status = SeatStatus.Held };
+                // seats[seatListIndex] = randomSeat with { Status = SeatStatus.Held };
                 Console.WriteLine($"Seat {randomSeat.Row}-{randomSeat.Number} held");
             }
         }
@@ -81,20 +101,18 @@ public class BookingSimulator
             // Try to reserve the held seat with a 75% chance
             lock (seats)
             {
-                var heldSeat = seats.FirstOrDefault(s => s.Row == seatToBook.Row && s.Number == seatToBook.Number && s.Status == SeatStatus.Held);
-                if (heldSeat != null)
+                var processedSeat = seats.First(s => s.Row == seatToBook.Row && s.Number == seatToBook.Number);
+
+                // 75% chance to reserve, 25% to set back to available
+                if (Random.Shared.NextDouble() < 0.75)
                 {
-                    // 75% chance to reserve, 25% to set back to available
-                    if (Random.Shared.NextDouble() < 0.75)
-                    {
-                        seats[seats.IndexOf(heldSeat)] = heldSeat with { Status = SeatStatus.Reserved };
-                        Console.WriteLine($"Seat {heldSeat.Row}-{heldSeat.Number} reserved");
-                    }
-                    else
-                    {
-                        seats[seats.IndexOf(heldSeat)] = heldSeat with { Status = SeatStatus.Available };
-                        Console.WriteLine($"Seat {heldSeat.Row}-{heldSeat.Number} released (set to available)");
-                    }
+                    seats[seats.IndexOf(processedSeat)] = seatToBook with { Status = SeatStatus.Reserved };
+                    Console.WriteLine($"Seat {processedSeat.Row}-{processedSeat.Number} reserved");
+                }
+                else
+                {
+                    seats[seats.IndexOf(processedSeat)] = processedSeat with { Status = SeatStatus.Available };
+                    Console.WriteLine($"Seat {processedSeat.Row}-{processedSeat.Number} released (set to available)");
                 }
             }
         }

@@ -5,6 +5,8 @@ VisualStudioVersion = 17.14.36127.28
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Booking", "Booking\Booking.csproj", "{778A271D-D18F-2E99-CB90-128D076012F9}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AzServices", "AzServices\AzServices.csproj", "{55C1AA24-8E8F-CD31-97EB-A30E5DF97B3E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{778A271D-D18F-2E99-CB90-128D076012F9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{778A271D-D18F-2E99-CB90-128D076012F9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{778A271D-D18F-2E99-CB90-128D076012F9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{55C1AA24-8E8F-CD31-97EB-A30E5DF97B3E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{55C1AA24-8E8F-CD31-97EB-A30E5DF97B3E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{55C1AA24-8E8F-CD31-97EB-A30E5DF97B3E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{55C1AA24-8E8F-CD31-97EB-A30E5DF97B3E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
