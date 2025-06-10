@@ -4,15 +4,26 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Booking.Controllers
 {
+    public record SimulateBookingRequest(int Rows, int SeatsPerRow, int NumberOfBookings, string Movie);
+
     [ApiController]
     [Route("[controller]")]
     public class SimulateBookingsController(IServiceBusService serviceBusService) : ControllerBase
     {
-        [HttpGet]
-        public IActionResult Get()
+        [HttpPost]
+        public IActionResult Post([FromBody] SimulateBookingRequest request)
         {
-            new BookingSimulator(serviceBusService).BookSeats(10, 10);
-            return Ok();
+            Task.Run(() =>
+            {
+                new BookingSimulator(serviceBusService).BookSeats(
+                    request.Rows,
+                    request.SeatsPerRow,
+                    request.NumberOfBookings,
+                    request.Movie
+                );
+            });
+
+            return Accepted();
         }
     }
 }

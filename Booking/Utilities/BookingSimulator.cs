@@ -11,7 +11,7 @@ public enum SeatStatus
 
 public interface IBookingSimulator
 {
-    void BookSeats(int rows, int seatsPerRow);
+    void BookSeats(int rows, int seatsPerRow, int numberOfBookings, string Movie);
 }
 
 public class BookingSimulator(IServiceBusService serviceBusService) : IBookingSimulator
@@ -23,106 +23,139 @@ public class BookingSimulator(IServiceBusService serviceBusService) : IBookingSi
 
     List<Seat> seats = [];
     private volatile bool circuitBroken = false;
-
-    // Simulates a circuit breaker by manually blocking and unblocking bookings threads.
     private readonly ManualResetEventSlim circuitBreakerEvent = new(true);
 
-    public void BookSeats(int rows, int seatsPerRow)
+    // For unique random selection
+    private List<int> shuffledIndices = [];
+    private int nextIndex = 0;
+
+    public void BookSeats(int rows, int seatsPerRow, int numberOfBookings, string movie)
     {
-        // For each row and each seat in that row, create a Seat object
-        // and the flatten the result into a single list of seats.
-
-        //[
-        //  [Seat(1,1), Seat(1,2), ...], // Row 1
-        //  [Seat(2,1), Seat(2,2), ...], // Row 2
-        //  ...
-        //][
-        //  [Seat(1,1), Seat(1,2), ...], // Row 1
-        //  [Seat(2,1), Seat(2,2), ...], // Row 2
-        //  ...
-        //]
-
         seats = [.. Enumerable.Range(1, rows)
             .SelectMany(row =>
                 Enumerable.Range(1, seatsPerRow)
                 .Select(seatNumber => new Seat(row, seatNumber, SeatStatus.Available)))];
 
-        // Create a list of booking tasks with a length twice the theater's capacity to simulate high concurrency.
-        // and then process them in batches to simulate different booking times.
-        int totalTasks = seats.Count;
+        // Prepare and shuffle indices for unique random selection
+        shuffledIndices = Enumerable.Range(0, seats.Count).OrderBy(_ => Random.Shared.Next()).ToList();
+        nextIndex = 0;
+
+        int totalTasks = numberOfBookings;
         int batchSize = 10;
 
         for (int i = 0; i < totalTasks; i += batchSize)
         {
             var batchTasks = Enumerable.Range(i, Math.Min(batchSize, totalTasks - i))
-                .Select(_ => Task.Run(() => BookSeat()))
+                .Select(_ => Task.Run(() => BookSeat(movie)))
                 .ToArray();
 
             Task.WaitAll(batchTasks);
         }
+
+        serviceBusService.EnableDisposal();
+
+        // Count seat statuses
+        int available = seats.Count(s => s.Status == SeatStatus.Available);
+        int held = seats.Count(s => s.Status == SeatStatus.Held);
+        int reserved = seats.Count(s => s.Status == SeatStatus.Reserved);
+
+        Console.WriteLine($"Available: {available}, Held: {held}, Reserved: {reserved}");
     }
 
-    private async Task BookSeat()
+    // Returns a unique random seat index from the shuffled list. 
+    // If all indices have been used, returns the index of the next available seat.
+    private int GetNextUniqueRandomIndex()
     {
-        // Simulates different booking times by introducing a random delay
+        lock (shuffledIndices)
+        {
+            if (nextIndex >= shuffledIndices.Count)
+            {
+                // If all the random index have been used, pick the next avialable seat.
+                lock (seats)
+                {
+                    var avilableSeat = seats.FirstOrDefault(x => x.Status == SeatStatus.Available);
+                    return seats.IndexOf(avilableSeat!);
+                }
+            }
+            else
+            {
+                // Ramdom seat index.
+                return shuffledIndices[nextIndex++];
+            }
+        }
+    }
+
+    private async Task BookSeat(string movie)
+    {
         int delay = Random.Shared.Next(1000, 5000);
         await Task.Delay(delay);
 
-        // "Enter the ManualResetEvent area"
-        // Blocks the current thread if the circuit breaker is closed (i.e., after ManualResetEventSlim.Reset() is called),
-        // and resumes only when the circuit breaker is opened again (ManualResetEventSlim.Set() is called).
         circuitBreakerEvent.Wait();
 
-        // Pick any available seat randomly (thread-safe)
-        Seat? seatToBook = null;
-        lock (seats)
+        try
         {
-            var availableSeats = seats
-                .Select((seat, idx) => (seat, idx))
-                .Where(x => x.seat.Status == SeatStatus.Available)
-                .ToList();
-
-            if (availableSeats.Count > 0)
-            {
-                // Randomly select one of the available seats
-                var randomIndex = Random.Shared.Next(availableSeats.Count);
-                var (randomSeat, seatListIndex) = availableSeats[randomIndex];
-                seatToBook = randomSeat;
-
-                // Mark as held (simulate booking in process)
-                seatToBook = randomSeat with { Status = SeatStatus.Held };
-                // seats[seatListIndex] = randomSeat with { Status = SeatStatus.Held };
-                Console.WriteLine($"Seat {randomSeat.Row}-{randomSeat.Number} held");
-            }
-        }
-
-        if (seatToBook is { Status: SeatStatus.Held })
-        {
-            // Try to reserve the held seat with a 75% chance
+            Seat? seatToBook = null;
             lock (seats)
             {
-                var processedSeat = seats.First(s => s.Row == seatToBook.Row && s.Number == seatToBook.Number);
+                var availableSeats = seats
+                    .Select((seat, idx) => (seat, idx))
+                    .Where(x => x.seat.Status == SeatStatus.Available)
+                    .ToList();
 
-                // 75% chance to reserve, 25% to set back to available
-                if (Random.Shared.NextDouble() < 0.75)
+                if (availableSeats.Count > 0)
                 {
-                    seats[seats.IndexOf(processedSeat)] = seatToBook with { Status = SeatStatus.Reserved };
-                    Console.WriteLine($"Seat {processedSeat.Row}-{processedSeat.Number} reserved");
+                    // Get a unique random index from the shuffled list
+                    var uniqueRandomIndex = GetNextUniqueRandomIndex();
+                    var (randomSeat, seatListIndex) = availableSeats.FirstOrDefault(x => x.idx == uniqueRandomIndex);
+
+                    // If the unique index is not in availableSeats (seat already taken), fallback to random
+                    if (randomSeat == null)
+                    {
+                        var fallbackIndex = Random.Shared.Next(availableSeats.Count);
+                        (randomSeat, seatListIndex) = availableSeats[fallbackIndex];
+                    }
+
+                    seatToBook = randomSeat;
+                    seats[seats.IndexOf(seatToBook)] = randomSeat with { Status = SeatStatus.Held };
+
+                    seatToBook = randomSeat with { Status = SeatStatus.Held };
+                    serviceBusService.SendSeatUpdateAsync(BrokerMessage(seatToBook, movie));
+                    Console.WriteLine($"Seat {seatToBook.Row}-{seatToBook.Number} held");
                 }
-                else
+            }
+
+            if (seatToBook is { Status: SeatStatus.Held })
+            {
+                lock (seats)
                 {
-                    seats[seats.IndexOf(processedSeat)] = processedSeat with { Status = SeatStatus.Available };
-                    Console.WriteLine($"Seat {processedSeat.Row}-{processedSeat.Number} released (set to available)");
+                    var processedSeat = seats.First(s => s.Row == seatToBook.Row && s.Number == seatToBook.Number);
+
+                    if (Random.Shared.NextDouble() < 0.75)
+                    {
+                        seats[seats.IndexOf(processedSeat)] = processedSeat with { Status = SeatStatus.Reserved };
+                        var reservedSeat = processedSeat with { Status = SeatStatus.Reserved };
+                        serviceBusService.SendSeatUpdateAsync(BrokerMessage(reservedSeat, movie));
+                        Console.WriteLine($"Seat {processedSeat.Row}-{processedSeat.Number} reserved");
+                    }
+                    else
+                    {
+                        seats[seats.IndexOf(processedSeat)] = processedSeat with { Status = SeatStatus.Available };
+                        var availableSeat = processedSeat with { Status = SeatStatus.Available };
+                        serviceBusService.SendSeatUpdateAsync(BrokerMessage(availableSeat, movie));
+                        Console.WriteLine($"Seat {processedSeat.Row}-{processedSeat.Number} released (set to available)");
+                    }
                 }
             }
         }
 
-        // Check for circuit breaker after reservation
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.ToString());
+        }
+
         TriggerCircuitBreakerIfNeeded();
     }
 
-    // If the reservation rate exceeds 50%, trigger a circuit breaker
-    // and pause further bookings for 5 seconds.
     private void TriggerCircuitBreakerIfNeeded()
     {
         if (!circuitBroken)
@@ -137,17 +170,18 @@ public class BookingSimulator(IServiceBusService serviceBusService) : IBookingSi
             if (reservedCount >= totalCount / 2)
             {
                 circuitBroken = true;
-                // Close gate.
                 circuitBreakerEvent.Reset();
                 Console.WriteLine("Circuit breaker triggered: waiting 5 seconds due to high reservation rate.");
                 Task.Run(async () =>
                 {
                     await Task.Delay(5000);
-                    // Open gate after 5 seconds.
                     circuitBreakerEvent.Set();
                     Console.WriteLine("Circuit breaker released: processing resumes.");
                 });
             }
         }
     }
+
+    private static SeatUpdateMessage BrokerMessage(Seat seat, string movie) =>
+        new(seat.Row, seat.Number, seat.Status.ToString(), movie);
 }

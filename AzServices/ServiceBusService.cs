@@ -1,17 +1,9 @@
 ﻿using Azure.Messaging.ServiceBus;
 using System.Text.Json;
-using System.Threading.Tasks;
 
 namespace AzServices;
 
-public enum SeatStatus
-{
-    Available,
-    Held,
-    Reserved
-}
-
-public record SeatUpdateMessage(int Row, int Number, SeatStatus Status, string Movie);
+public record SeatUpdateMessage(int Row, int Number, string Status, string Movie);
 public record BookingErrorMessage(string Error);
 
 public interface IServiceBusService
@@ -20,22 +12,25 @@ public interface IServiceBusService
     Task<List<T>> ReceiveMessagesAsync<T>(string topic, string subscription, int maxMessages = 10);
     Task SendBookingErrorAsync(BookingErrorMessage message);
     Task SendSeatUpdateAsync(SeatUpdateMessage message);
+
+    void EnableDisposal();
 }
 
 public class ServiceBusService : IAsyncDisposable, IServiceBusService
 {
-    private readonly ServiceBusClient _client;
+    private bool canDispose = false; // Prevents the client to be disposed by a task.
+    private readonly ServiceBusClient client;
     private const string ConnectionString = "Endpoint=sb://booking-uservice-sbs.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=Ebxyy994AekuZz2eyN1mgpk96Kh8oQY2r+ASbHPu5r4=";
 
     public ServiceBusService()
     {
-        _client = new ServiceBusClient(ConnectionString);
+        client = new ServiceBusClient(ConnectionString);
     }
 
     // Send a seat update message to the seatupdates topic
     public async Task SendSeatUpdateAsync(SeatUpdateMessage message)
     {
-        var sender = _client.CreateSender("seatupdates");
+        var sender = client.CreateSender("seatupdates");
         var body = JsonSerializer.Serialize(message);
         var sbMessage = new ServiceBusMessage(body);
         await sender.SendMessageAsync(sbMessage);
@@ -44,7 +39,7 @@ public class ServiceBusService : IAsyncDisposable, IServiceBusService
     // Send a booking error message to the bookingerrors topic
     public async Task SendBookingErrorAsync(BookingErrorMessage message)
     {
-        var sender = _client.CreateSender("bookingerrors");
+        var sender = client.CreateSender("bookingerrors");
         var body = JsonSerializer.Serialize(message);
         var sbMessage = new ServiceBusMessage(body);
         await sender.SendMessageAsync(sbMessage);
@@ -53,7 +48,7 @@ public class ServiceBusService : IAsyncDisposable, IServiceBusService
     // Receive messages from a subscription (for both topics)
     public async Task<List<T>> ReceiveMessagesAsync<T>(string topic, string subscription, int maxMessages = 10)
     {
-        var receiver = _client.CreateReceiver(topic, subscription);
+        var receiver = client.CreateReceiver(topic, subscription);
         var messages = await receiver.ReceiveMessagesAsync(maxMessages, TimeSpan.FromSeconds(5));
         var result = new List<T>();
 
@@ -69,8 +64,17 @@ public class ServiceBusService : IAsyncDisposable, IServiceBusService
         return result;
     }
 
+    public void EnableDisposal()
+    {
+        canDispose = true;
+    }
+
     public async ValueTask DisposeAsync()
     {
-        await _client.DisposeAsync();
+        if (canDispose)
+        {
+            await client.DisposeAsync();
+            GC.SuppressFinalize(this);
+        }
     }
 }

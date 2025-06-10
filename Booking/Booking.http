@@ -4,8 +4,3 @@ GET {{MicroServices_HostAddress}}/weatherforecast/
 Accept: application/json
 
 ###
-
-GET {{MicroServices_HostAddress}}/SimulateBookings/
-Accept: application/json
-
-###
