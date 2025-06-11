@@ -1,0 +1,41 @@
+﻿@page "/"
+@rendermode InteractiveServer
+
+<PageTitle>Bookings</PageTitle>
+
+<MudPopoverProvider />
+
+<div class="d-flex flex-grow-0 gap-6 align-items-center" style="width:fit-content;">
+    <MudNumericField @bind-Value="Rows" Label="Rows" Variant="Variant.Text" Min="1" Max="20" Class="flex-grow-0" Style="width:60px" />
+    <MudNumericField @bind-Value="Seats" Label="Seats" Variant="Variant.Text" Min="1" Max="30" Class="flex-grow-0" Style="width:60px" />
+    <MudNumericField @bind-Value="NumberOfBookings" Label="Number of bookings" Variant="Variant.Text" Min="10" Max="1000" Class="flex-grow-0" Style="width:140px" />
+    <MudSelect T="string" @bind-Value="SelectedMovie" Label="Movie" Variant="Variant.Text" Dense="true" Class="flex-grow-0" Style="width:200px">
+        @foreach (var movie in Movie)
+        {
+            <MudSelectItem T="string" Value="@movie">@movie</MudSelectItem>
+        }
+    </MudSelect>
+    <MudButton Variant="Variant.Filled" Class="flex-grow-0 ms-2" OnClick="SimulateBookings">Open session</MudButton>
+</div>
+
+@if (Rows > 0 && Seats > 0)
+{
+    <div class="mt-4">
+        <MudTable Items="@Enumerable.Range(1, Rows)" Hover="false" Breakpoint="Breakpoint.None"
+                  HorizontalScrollbar="true" Dense="true">
+            <RowTemplate>
+                @for (int seat = 1; seat <= Seats; seat++)
+                {
+                    var currentSeat = seat;
+                    <MudTd Style="padding: 4px 4px 4px 4px">
+                        @{
+                            var seatObj = seats.FirstOrDefault(s => s.Row == context && s.Number == currentSeat);
+                            var style = seatObj?.css ?? cssAvailable;
+                        }
+                        <span style="@style">@context-@currentSeat</span>
+                    </MudTd>
+                }
+            </RowTemplate>
+        </MudTable>
+    </div>
+}

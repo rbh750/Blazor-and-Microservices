@@ -1,7 +1,7 @@
 ﻿using Azure.Messaging.ServiceBus;
 using System.Text.Json;
 
-namespace AzServices;
+namespace AzServices.Services;
 
 public record SeatUpdateMessage(int Row, int Number, string Status, string Movie);
 public record BookingErrorMessage(string Error);
@@ -52,7 +52,7 @@ public class ServiceBusService : IAsyncDisposable, IServiceBusService
         var messages = await receiver.ReceiveMessagesAsync(maxMessages, TimeSpan.FromSeconds(5));
         var result = new List<T>();
 
-        foreach (var msg in messages)
+        foreach (var msg in messages.Reverse())
         {
             var obj = JsonSerializer.Deserialize<T>(msg.Body);
             if (obj != null)

@@ -1,4 +1,4 @@
-﻿namespace AzServices;
+﻿namespace AzServices.Entities;
 
 public class AzureSettings
 {

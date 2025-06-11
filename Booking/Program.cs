@@ -1,4 +1,4 @@
-using AzServices;
+using AzServices.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -8,7 +8,7 @@ builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services
     .AddOpenApi()
-    .AddConfigurationModule("appsettings.json");
+    .AddConfigurationModule("appsettings.json", true);
 
 var app = builder.Build();
 

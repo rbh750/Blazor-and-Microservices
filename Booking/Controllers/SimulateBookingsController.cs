@@ -1,4 +1,4 @@
-using AzServices;
+using AzServices.Services;
 using Booking.Utilities;
 using Microsoft.AspNetCore.Mvc;
 

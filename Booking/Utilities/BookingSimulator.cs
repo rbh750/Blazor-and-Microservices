@@ -1,13 +1,7 @@
-﻿using AzServices;
+﻿using AzServices.Enums;
+using AzServices.Services;
 
 namespace Booking.Utilities;
-
-public enum SeatStatus
-{
-    Available,   // The seat is free and can be selected
-    Held,        // The seat is selected (held) but not yet paid
-    Reserved     // The seat is paid and fully reserved
-}
 
 public interface IBookingSimulator
 {
@@ -18,12 +12,14 @@ public class BookingSimulator(IServiceBusService serviceBusService) : IBookingSi
 {
     record Seat(int Row, int Number, SeatStatus Status)
     {
-        public Seat WithStatus(SeatStatus newStatus) => this with { Status = newStatus };
+        //public Seat WithStatus(SeatStatus newStatus) => this with { Status = newStatus };
     }
 
     List<Seat> seats = [];
     private volatile bool circuitBroken = false;
     private readonly ManualResetEventSlim circuitBreakerEvent = new(true);
+    private readonly SemaphoreSlim seatsSemaphore = new(1, 1); // Add semaphore for seats
+    private readonly object shuffleLock = new(); // Separate lock for shuffled indices
 
     // For unique random selection
     private List<int> shuffledIndices = [];
@@ -37,7 +33,7 @@ public class BookingSimulator(IServiceBusService serviceBusService) : IBookingSi
                 .Select(seatNumber => new Seat(row, seatNumber, SeatStatus.Available)))];
 
         // Prepare and shuffle indices for unique random selection
-        shuffledIndices = Enumerable.Range(0, seats.Count).OrderBy(_ => Random.Shared.Next()).ToList();
+        shuffledIndices = [.. Enumerable.Range(0, seats.Count).OrderBy(_ => Random.Shared.Next())];
         nextIndex = 0;
 
         int totalTasks = numberOfBookings;
@@ -62,8 +58,6 @@ public class BookingSimulator(IServiceBusService serviceBusService) : IBookingSi
         Console.WriteLine($"Available: {available}, Held: {held}, Reserved: {reserved}");
     }
 
-    // Returns a unique random seat index from the shuffled list. 
-    // If all indices have been used, returns the index of the next available seat.
     private int GetNextUniqueRandomIndex()
     {
         lock (shuffledIndices)
@@ -95,7 +89,9 @@ public class BookingSimulator(IServiceBusService serviceBusService) : IBookingSi
         try
         {
             Seat? seatToBook = null;
-            lock (seats)
+
+            await seatsSemaphore.WaitAsync();
+            try
             {
                 var availableSeats = seats
                     .Select((seat, idx) => (seat, idx))
@@ -119,35 +115,49 @@ public class BookingSimulator(IServiceBusService serviceBusService) : IBookingSi
                     seats[seats.IndexOf(seatToBook)] = randomSeat with { Status = SeatStatus.Held };
 
                     seatToBook = randomSeat with { Status = SeatStatus.Held };
-                    serviceBusService.SendSeatUpdateAsync(BrokerMessage(seatToBook, movie));
-                    Console.WriteLine($"Seat {seatToBook.Row}-{seatToBook.Number} held");
                 }
+            }
+            finally
+            {
+                seatsSemaphore.Release();
             }
 
             if (seatToBook is { Status: SeatStatus.Held })
             {
-                lock (seats)
+                // Send notification that seat is held
+                await serviceBusService.SendSeatUpdateAsync(BrokerMessage(seatToBook, movie));
+                Console.WriteLine($"Seat {seatToBook.Row}-{seatToBook.Number} held");
+
+                // Update the seat's final status (Reserved or Available)
+                Seat updatedSeat;
+
+                await seatsSemaphore.WaitAsync();
+                try
                 {
                     var processedSeat = seats.First(s => s.Row == seatToBook.Row && s.Number == seatToBook.Number);
 
                     if (Random.Shared.NextDouble() < 0.75)
                     {
                         seats[seats.IndexOf(processedSeat)] = processedSeat with { Status = SeatStatus.Reserved };
-                        var reservedSeat = processedSeat with { Status = SeatStatus.Reserved };
-                        serviceBusService.SendSeatUpdateAsync(BrokerMessage(reservedSeat, movie));
+                        updatedSeat = processedSeat with { Status = SeatStatus.Reserved };
                         Console.WriteLine($"Seat {processedSeat.Row}-{processedSeat.Number} reserved");
                     }
                     else
                     {
                         seats[seats.IndexOf(processedSeat)] = processedSeat with { Status = SeatStatus.Available };
-                        var availableSeat = processedSeat with { Status = SeatStatus.Available };
-                        serviceBusService.SendSeatUpdateAsync(BrokerMessage(availableSeat, movie));
+                        updatedSeat = processedSeat with { Status = SeatStatus.Available };
                         Console.WriteLine($"Seat {processedSeat.Row}-{processedSeat.Number} released (set to available)");
                     }
                 }
+                finally
+                {
+                    seatsSemaphore.Release();
+                }
+
+                // Send the final status update outside the semaphore lock
+                await serviceBusService.SendSeatUpdateAsync(BrokerMessage(updatedSeat, movie));
             }
         }
-
         catch (Exception ex)
         {
             Console.WriteLine(ex.ToString());

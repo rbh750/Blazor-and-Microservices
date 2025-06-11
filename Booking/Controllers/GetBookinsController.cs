@@ -1,4 +1,4 @@
-using AzServices;
+using AzServices.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Booking.Controllers
