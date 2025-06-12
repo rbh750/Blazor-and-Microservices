@@ -1,5 +1,4 @@
-﻿using AzServices.Entities;
-using System.Net;
+﻿using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -9,7 +8,7 @@ namespace AzServices.Services;
 public interface IRestService
 {
     Task<HttpStatusCode?> SimulateBookings(int rows, int seatsPerRow, int numberOfBookings, string movie);
-    Task<List<Booking>?> GetBookings(string topic, string subscription, int maxMessages);
+    Task<List<T>?> GetMessages<T>(string topic, string subscription, int maxMessages);
 }
 
 public class RestService(HttpClient httpClient) : IRestService
@@ -34,14 +33,14 @@ public class RestService(HttpClient httpClient) : IRestService
         return response.StatusCode;
     }
 
-    // Retrieves a list of bookings from the specified topic and subscription in the message broker.
-    public async Task<List<Booking>?> GetBookings(string topic, string subscription, int maxMessages)
+    // Retrieves messages from the specified topic and subscription.
+    public async Task<List<T>?> GetMessages<T>(string topic, string subscription, int maxMessages)
     {
-        List<Booking>? result = null;
+        List<T>? result = null;
 
         StringBuilder sb = new();
         sb.Append(httpClient.BaseAddress!);
-        sb.Append($"GetBookings");
+        sb.Append($"GetMessages");
         sb.Append($"?topic={topic}");
         sb.Append($"&subscription={subscription}");
         sb.Append($"&maxMessages={maxMessages}");
@@ -55,16 +54,18 @@ public class RestService(HttpClient httpClient) : IRestService
             var responseContent = await response.Content.ReadAsStringAsync();
             if (!string.IsNullOrWhiteSpace(responseContent))
             {
-                var options = new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true,
-                    Converters = { new JsonStringEnumConverter() }
-                };
-
-                result = JsonSerializer.Deserialize<List<Booking>>(responseContent, options);
+                result = JsonSerializer.Deserialize<List<T>>(responseContent, GetSerializerSettings());
             }
         }
 
         return result;
     }
+
+    private static JsonSerializerOptions GetSerializerSettings() =>
+        new()
+        {
+            PropertyNameCaseInsensitive = true,
+            Converters = { new JsonStringEnumConverter() }
+        };
+
 }

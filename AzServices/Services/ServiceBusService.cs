@@ -4,13 +4,13 @@ using System.Text.Json;
 namespace AzServices.Services;
 
 public record SeatUpdateMessage(int Row, int Number, string Status, string Movie);
-public record BookingErrorMessage(string Error);
+public record ApiStatusMessage(string Status);
 
 public interface IServiceBusService
 {
     ValueTask DisposeAsync();
     Task<List<T>> ReceiveMessagesAsync<T>(string topic, string subscription, int maxMessages = 10);
-    Task SendBookingErrorAsync(BookingErrorMessage message);
+    Task SendApiStatusAsync(ApiStatusMessage message);
     Task SendSeatUpdateAsync(SeatUpdateMessage message);
 
     void EnableDisposal();
@@ -37,7 +37,7 @@ public class ServiceBusService : IAsyncDisposable, IServiceBusService
     }
 
     // Send a booking error message to the bookingerrors topic
-    public async Task SendBookingErrorAsync(BookingErrorMessage message)
+    public async Task SendApiStatusAsync(ApiStatusMessage message)
     {
         var sender = client.CreateSender("bookingerrors");
         var body = JsonSerializer.Serialize(message);
@@ -49,7 +49,7 @@ public class ServiceBusService : IAsyncDisposable, IServiceBusService
     public async Task<List<T>> ReceiveMessagesAsync<T>(string topic, string subscription, int maxMessages = 10)
     {
         var receiver = client.CreateReceiver(topic, subscription);
-        var messages = await receiver.ReceiveMessagesAsync(maxMessages, TimeSpan.FromSeconds(5));
+        var messages = await receiver.ReceiveMessagesAsync(maxMessages, TimeSpan.FromSeconds(2));
         var result = new List<T>();
 
         foreach (var msg in messages.Reverse())

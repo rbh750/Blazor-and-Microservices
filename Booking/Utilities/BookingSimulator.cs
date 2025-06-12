@@ -163,31 +163,37 @@ public class BookingSimulator(IServiceBusService serviceBusService) : IBookingSi
             Console.WriteLine(ex.ToString());
         }
 
-        TriggerCircuitBreakerIfNeeded();
+        await TriggerCircuitBreakerIfNeeded();
     }
 
-    private void TriggerCircuitBreakerIfNeeded()
+    private async Task TriggerCircuitBreakerIfNeeded()
     {
         if (!circuitBroken)
         {
             int reservedCount;
             int totalCount;
-            lock (seats)
+            await seatsSemaphore.WaitAsync();
+            try
             {
                 reservedCount = seats.Count(s => s.Status == SeatStatus.Reserved);
                 totalCount = seats.Count;
             }
+            finally
+            {
+                seatsSemaphore.Release();
+            }
             if (reservedCount >= totalCount / 2)
             {
+                await serviceBusService.SendApiStatusAsync(new ApiStatusMessage("Down"));
                 circuitBroken = true;
                 circuitBreakerEvent.Reset();
                 Console.WriteLine("Circuit breaker triggered: waiting 5 seconds due to high reservation rate.");
-                Task.Run(async () =>
-                {
-                    await Task.Delay(5000);
-                    circuitBreakerEvent.Set();
-                    Console.WriteLine("Circuit breaker released: processing resumes.");
-                });
+
+                await Task.Delay(5000);
+                await serviceBusService.SendApiStatusAsync(new ApiStatusMessage("Up"));
+                circuitBreakerEvent.Set();
+                Console.WriteLine("Circuit breaker released: processing resumes.");
+
             }
         }
     }

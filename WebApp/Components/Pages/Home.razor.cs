@@ -2,8 +2,6 @@
 using AzServices.Enums;
 using AzServices.Services;
 using Microsoft.AspNetCore.Components;
-using MudBlazor;
-using System.Linq;
 using System.Net;
 
 namespace WebApp.Components.Pages;
@@ -14,19 +12,22 @@ public partial class Home : ComponentBase
 {
     [Inject] private IRestService RestService { get; init; } = default!;
 
-    public int Rows { get; set; } = 6;
-    public int Seats { get; set; } = 5;
-    public int NumberOfBookings { get; set; } = 40;
+    public int Rows { get; set; } = 4;
+    public int Seats { get; set; } = 4;
+    public int NumberOfBookings { get; set; } = 20;
     public List<string> Movie { get; set; } = [];
     public string? SelectedMovie { get; set; }
 
     private readonly string cssAvailable = "color:black; background-color: white;";
     private readonly string cssReserved = "color:white; background-color: red;";
+    private readonly string cssHeld = "color:black; background-color: yellow;";
     private List<Seat> seats = [];
     private readonly List<Booking> bookings = [];
     private List<Booking>? bookingsbatch = [];
-    private const string TOPIC = "seatupdates";
+    private const string TOPIC_BOOKINGS = "seatupdates";
     private const string SUBSCRIPTION = "WebsiteSubscription";
+    private bool disableBtn = false;
+
 
     protected override void OnInitialized()
     {
@@ -38,6 +39,7 @@ public partial class Home : ComponentBase
     {
         if (SelectedMovie != null)
         {
+            disableBtn = true;
             ResetSeatsFormat();
             bookings.Clear(); // Clear previous bookings
 
@@ -49,8 +51,9 @@ public partial class Home : ComponentBase
 
             do
             {
-                bookingsbatch = await RestService.GetBookings(TOPIC, SUBSCRIPTION, 10);
+                bookingsbatch = await RestService.GetMessages<Booking>(TOPIC_BOOKINGS, SUBSCRIPTION, 1);
                 if (bookingsbatch == null) break;
+
 
                 // For each new incomingBooking, update existing or add new
                 foreach (var incomingBooking in bookingsbatch)
@@ -60,10 +63,7 @@ public partial class Home : ComponentBase
 
                     if (existingBookingIndex >= 0)
                     {
-                        if (incomingBooking.Status == SeatStatus.Reserved)
-                        {
-                            bookings[existingBookingIndex] = incomingBooking;
-                        }
+                        bookings[existingBookingIndex] = incomingBooking;
                     }
                     else
                     {
@@ -95,6 +95,8 @@ public partial class Home : ComponentBase
 
             } while (bookingsbatch != null && bookingsbatch.Count > 0);
         }
+        disableBtn = false;
+        StateHasChanged();
     }
 
     private void ResetSeatsFormat()
@@ -110,9 +112,10 @@ public partial class Home : ComponentBase
         return booking.Status switch
         {
             SeatStatus.Available => cssAvailable,
-            SeatStatus.Held => cssAvailable,
+            SeatStatus.Held => cssHeld,
             SeatStatus.Reserved => cssReserved,
             _ => cssAvailable // Default case
         };
     }
 }
+

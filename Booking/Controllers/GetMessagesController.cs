@@ -5,10 +5,10 @@ namespace Booking.Controllers
 {
     [ApiController]
     [Route("[controller]")]
-    public class GetBookingsController(IServiceBusService serviceBusService) : ControllerBase
+    public class GetMessagesController(IServiceBusService serviceBusService) : ControllerBase
     {
         [HttpGet]
-        public async Task<IActionResult> GetBookings(
+        public async Task<IActionResult> GetMessages(
             [FromQuery] string topic,
             [FromQuery] string subscription,
             [FromQuery] int maxMessages = 10)

@@ -6,17 +6,18 @@
 <MudPopoverProvider />
 
 <div class="d-flex flex-grow-0 gap-6 align-items-center" style="width:fit-content;">
-    <MudNumericField @bind-Value="Rows" Label="Rows" Variant="Variant.Text" Min="1" Max="20" Class="flex-grow-0" Style="width:60px" />
-    <MudNumericField @bind-Value="Seats" Label="Seats" Variant="Variant.Text" Min="1" Max="30" Class="flex-grow-0" Style="width:60px" />
-    <MudNumericField @bind-Value="NumberOfBookings" Label="Number of bookings" Variant="Variant.Text" Min="10" Max="1000" Class="flex-grow-0" Style="width:140px" />
-    <MudSelect T="string" @bind-Value="SelectedMovie" Label="Movie" Variant="Variant.Text" Dense="true" Class="flex-grow-0" Style="width:200px">
+    <MudNumericField @bind-Value="Rows" Label="Rows" Variant="Variant.Text" Min="1" Max="20" Class="flex-grow-0" Style="width:60px" Disabled="@disableBtn" />
+    <MudNumericField @bind-Value="Seats" Label="Seats" Variant="Variant.Text" Min="1" Max="30" Class="flex-grow-0" Style="width:60px" Disabled="@disableBtn" />
+    <MudNumericField @bind-Value="NumberOfBookings" Label="Number of bookings" Variant="Variant.Text" Min="10" Max="1000" Class="flex-grow-0" Style="width:150px" Disabled="@disableBtn" />
+    <MudSelect T="string" @bind-Value="SelectedMovie" Label="Movie" Variant="Variant.Text" Dense="true" Class="flex-grow-0" Style="width:200px" Disabled="@disableBtn">
         @foreach (var movie in Movie)
         {
             <MudSelectItem T="string" Value="@movie">@movie</MudSelectItem>
         }
     </MudSelect>
-    <MudButton Variant="Variant.Filled" Class="flex-grow-0 ms-2" OnClick="SimulateBookings">Open session</MudButton>
+    <MudButton Variant="Variant.Filled" Class="flex-grow-0 ms-2" OnClick="SimulateBookings" Disabled="@disableBtn">Open session</MudButton>
 </div>
+
 
 @if (Rows > 0 && Seats > 0)
 {
