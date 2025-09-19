@@ -20,12 +20,9 @@ public class ServiceBusService : IAsyncDisposable, IServiceBusService
 {
     private bool canDispose = false; // Prevents the client to be disposed by a task.
     private readonly ServiceBusClient client;
-    private const string ConnectionString = "Endpoint=sb://booking-uservice-sbs.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=Ebxyy994AekuZz2eyN1mgpk96Kh8oQY2r+ASbHPu5r4=";
+    private const string ConnectionString = "xxx"; // Change to your Service Bus connection string.
 
-    public ServiceBusService()
-    {
-        client = new ServiceBusClient(ConnectionString);
-    }
+    public ServiceBusService() { client = new ServiceBusClient(ConnectionString); }
 
     // Send a seat update message to the seatupdates topic
     public async Task SendSeatUpdateAsync(SeatUpdateMessage message)

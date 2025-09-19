@@ -12,14 +12,12 @@ public class BookingSimulator(IServiceBusService serviceBusService) : IBookingSi
 {
     record Seat(int Row, int Number, SeatStatus Status)
     {
-        //public Seat WithStatus(SeatStatus newStatus) => this with { Status = newStatus };
     }
 
     List<Seat> seats = [];
     private volatile bool circuitBroken = false;
     private readonly ManualResetEventSlim circuitBreakerEvent = new(true);
     private readonly SemaphoreSlim seatsSemaphore = new(1, 1); // Add semaphore for seats
-    private readonly object shuffleLock = new(); // Separate lock for shuffled indices
 
     // For unique random selection
     private List<int> shuffledIndices = [];
